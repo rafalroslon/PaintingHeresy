@@ -12,7 +12,7 @@ from PIL import Image
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
 APP_VERSION    = "1.0.0"
-UPDATE_URL     = "https://YOUR-APP.railway.app/version"  # ← zmień po deploymencie
+UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
 #  ŚCIEŻKI — działają zarówno w dev jak i w .exe

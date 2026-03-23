@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.3.2"
+APP_VERSION    = "1.3.3"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -299,6 +299,7 @@ def download_update():
         try:
             temp_path = os.path.join(BASE_DIR, '_update_temp.exe')
             r = _requests_lib.get(download_url, stream=True, timeout=120,
+                                  allow_redirects=True,
                                   headers={'User-Agent': f'PaintingHeresy/{APP_VERSION}'})
             total      = int(r.headers.get('content-length', 0))
             downloaded = 0
@@ -346,8 +347,11 @@ def install_update():
     bat_path = os.path.join(BASE_DIR, '_update.bat')
 
     bat_content = f"""@echo off
-timeout /t 4 /nobreak >nul
+timeout /t 3 /nobreak >nul
+taskkill /f /im PaintingHeresy.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
 move /y "{temp_path}" "{app_exe}"
+timeout /t 2 /nobreak >nul
 start "" "{app_exe}"
 del "%~f0"
 """

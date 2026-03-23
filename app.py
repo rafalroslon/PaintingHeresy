@@ -403,6 +403,190 @@ def get_changelog():
 def get_news():
     return jsonify(fetch_news())
 
+# ── KILL TEAM DATA ────────────────────────────────────────────
+
+import json as _json
+import time as _time
+
+KT_FACTIONS_FILE = os.path.join(BASE_DIR, 'ktdata_factions.json')
+KT_KT_DIR        = os.path.join(BASE_DIR, 'ktdata_killteams')
+KT_MEM_CACHE     = {}  # pamięć podręczna na czas sesji
+
+def _kt_headers():
+    return {'User-Agent': 'PaintingHeresy/1.0', 'Accept': 'application/json'}
+
+def _kt_save_factions(data):
+    try:
+        with open(KT_FACTIONS_FILE, 'w', encoding='utf-8') as f:
+            _json.dump({'ts': _time.time(), 'data': data}, f)
+    except Exception:
+        pass
+
+def _kt_load_factions():
+    try:
+        if os.path.exists(KT_FACTIONS_FILE):
+            with open(KT_FACTIONS_FILE, 'r', encoding='utf-8') as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return None
+
+def _kt_save_killteam(killteamid, data):
+    try:
+        if not os.path.exists(KT_KT_DIR):
+            os.makedirs(KT_KT_DIR)
+        path = os.path.join(KT_KT_DIR, f'{killteamid}.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            _json.dump({'ts': _time.time(), 'data': data}, f)
+    except Exception:
+        pass
+
+def _kt_load_killteam(killteamid):
+    try:
+        path = os.path.join(KT_KT_DIR, f'{killteamid}.json')
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return None
+
+KT_NEW_TEAMS_NOTIFICATION = []  # lista nowych kill teamów do pokazania
+
+def _kt_check_update_in_background(cached_data):
+    """Sprawdź w tle czy API ma nowe kill teamy"""
+    def _check():
+        global KT_NEW_TEAMS_NOTIFICATION
+        try:
+            resp = _requests_lib.get(
+                'https://ktdash.app/api/factions?loadkts=1',
+                timeout=10, headers=_kt_headers()
+            )
+            new_data = resp.json()
+            if not isinstance(new_data, list):
+                return
+
+            # Zbuduj set starych killteamId
+            old_ids = set()
+            for f in cached_data:
+                for kt in f.get('killteams', []):
+                    kid = kt.get('killteamId') or kt.get('killteamid') or ''
+                    if kid:
+                        old_ids.add(kid)
+
+            # Znajdź nowe
+            new_teams = []
+            for f in new_data:
+                fname = f.get('factionName') or f.get('factionname') or ''
+                for kt in f.get('killteams', []):
+                    kid  = kt.get('killteamId') or kt.get('killteamid') or ''
+                    kname = kt.get('killteamName') or kt.get('killteamname') or ''
+                    if kid and kid not in old_ids:
+                        new_teams.append({
+                            'killteamId':   kid,
+                            'killteamName': kname,
+                            'factionName':  fname,
+                        })
+
+            if new_teams:
+                _kt_save_factions(new_data)
+                KT_MEM_CACHE['factions'] = new_data
+                KT_NEW_TEAMS_NOTIFICATION = new_teams
+
+        except Exception:
+            pass
+    threading.Thread(target=_check, daemon=True).start()
+
+@app.route('/api/kt/new-teams', methods=['GET'])
+def kt_new_teams():
+    """Zwraca listę nowo wykrytych kill teamów"""
+    return jsonify(KT_NEW_TEAMS_NOTIFICATION)
+
+@app.route('/api/kt/new-teams/dismiss', methods=['POST'])
+def kt_dismiss_new_teams():
+    """Wyczyść powiadomienie"""
+    global KT_NEW_TEAMS_NOTIFICATION
+    KT_NEW_TEAMS_NOTIFICATION = []
+    return jsonify({'ok': True})
+
+
+@app.route('/api/kt/factions', methods=['GET'])
+def kt_factions():
+    # 1. Sprawdź pamięć sesji
+    if 'factions' in KT_MEM_CACHE:
+        return jsonify(KT_MEM_CACHE['factions'])
+
+    # 2. Sprawdź lokalny plik cache
+    cached = _kt_load_factions()
+    if cached and isinstance(cached.get('data'), list):
+        data  = cached['data']
+        KT_MEM_CACHE['factions'] = data
+        # Sprawdź aktualizacje w tle (bez blokowania)
+        _kt_check_update_in_background(data)
+        return jsonify(data)
+
+    # 3. Pierwsze uruchomienie — pobierz z API
+    try:
+        resp = _requests_lib.get(
+            'https://ktdash.app/api/factions?loadkts=1',
+            timeout=15, headers=_kt_headers()
+        )
+        data = resp.json()
+        if isinstance(data, list):
+            _kt_save_factions(data)
+            KT_MEM_CACHE['factions'] = data
+            return jsonify(data)
+    except Exception as e:
+        pass
+
+    return jsonify({'error': 'Could not load factions and no local cache found'}), 503
+
+@app.route('/api/kt/killteam/<factionid>/<killteamid>', methods=['GET'])
+def kt_killteam(factionid, killteamid):
+    cache_key = f'kt_{killteamid}'
+
+    # 1. Pamięć sesji
+    if cache_key in KT_MEM_CACHE:
+        return jsonify(KT_MEM_CACHE[cache_key])
+
+    # 2. Lokalny plik
+    cached = _kt_load_killteam(killteamid)
+    if cached and isinstance(cached.get('data'), dict):
+        KT_MEM_CACHE[cache_key] = cached['data']
+        return jsonify(cached['data'])
+
+    # 3. Pobierz z API i zapisz
+    try:
+        resp = _requests_lib.get(
+            f'https://ktdash.app/api/killteams/{killteamid}',
+            timeout=10, headers=_kt_headers()
+        )
+        if resp.status_code == 200 and 'application/json' in resp.headers.get('Content-Type', ''):
+            data = resp.json()
+            _kt_save_killteam(killteamid, data)
+            KT_MEM_CACHE[cache_key] = data
+            return jsonify(data)
+    except Exception:
+        pass
+
+    return jsonify({'error': 'Could not fetch kill team data'}), 404
+
+@app.route('/api/kt/cache-status', methods=['GET'])
+def kt_cache_status():
+    """Informacja o stanie cache"""
+    has_factions = os.path.exists(KT_FACTIONS_FILE)
+    kt_count     = len(os.listdir(KT_KT_DIR)) if os.path.exists(KT_KT_DIR) else 0
+    cached       = _kt_load_factions()
+    ts           = cached.get('ts', 0) if cached else 0
+    return jsonify({
+        'has_factions_cache': has_factions,
+        'killteams_cached':   kt_count,
+        'cache_age_hours':    round((_time.time() - ts) / 3600, 1) if ts else None,
+        'in_memory':          list(KT_MEM_CACHE.keys()),
+    })
+
+
+
 # ── PDF LIBRARY ──────────────────────────────────────────────
 
 PDF_DIR = os.path.join(BASE_DIR, 'pdfs')

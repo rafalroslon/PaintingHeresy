@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.3.1"
+APP_VERSION    = "1.3.2"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -376,6 +376,24 @@ del "%~f0"
     threading.Thread(target=shutdown, daemon=True).start()
 
     return jsonify({'status': 'installing'})
+
+@app.route('/api/changelog', methods=['GET'])
+def get_changelog():
+    """Zawsze zwraca pełny changelog z serwera"""
+    try:
+        resp = _requests_lib.get(UPDATE_URL, timeout=8,
+                                 headers={'User-Agent': f'PaintingHeresy/{APP_VERSION}'})
+        data = resp.json()
+        return jsonify({
+            'current_version': APP_VERSION,
+            'changelog': data.get('changelog', [])
+        })
+    except Exception as e:
+        return jsonify({
+            'current_version': APP_VERSION,
+            'changelog': [],
+            'error': str(e)
+        })
 
 @app.route('/api/news', methods=['GET'])
 def get_news():

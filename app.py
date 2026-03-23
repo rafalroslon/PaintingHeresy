@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.2.0"
+APP_VERSION    = "1.3.1"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -346,7 +346,7 @@ def install_update():
     bat_path = os.path.join(BASE_DIR, '_update.bat')
 
     bat_content = f"""@echo off
-timeout /t 2 /nobreak >nul
+timeout /t 4 /nobreak >nul
 move /y "{temp_path}" "{app_exe}"
 start "" "{app_exe}"
 del "%~f0"
@@ -359,11 +359,20 @@ del "%~f0"
         creationflags=subprocess.CREATE_NO_WINDOW
     )
 
-    # Zamknij aplikację po chwili
+    # Zamknij aplikację — ignoruj błędy PyWebView
     def shutdown():
         import time as _t
         _t.sleep(1)
-        os._exit(0)
+        try:
+            import webview
+            for w in webview.windows:
+                w.destroy()
+        except Exception:
+            pass
+        try:
+            os._exit(0)
+        except Exception:
+            pass
     threading.Thread(target=shutdown, daemon=True).start()
 
     return jsonify({'status': 'installing'})
@@ -459,6 +468,31 @@ def make_tray_icon():
     return img
 
 def main():
+    # Wycisz ostrzeżenie PyWebView o folderach tymczasowych
+    try:
+        import webview.platforms.winforms as _wf
+        _orig_destroy = getattr(_wf, '_destroy_window', None)
+        if _orig_destroy:
+            def _patched_destroy(*a, **kw):
+                try:
+                    _orig_destroy(*a, **kw)
+                except Exception:
+                    pass
+            _wf._destroy_window = _patched_destroy
+    except Exception:
+        pass
+
+    # Wycisz MessageBox z Windows przez monkey-patch ctypes
+    try:
+        import ctypes
+        _orig_msgbox = ctypes.windll.user32.MessageBoxW
+        def _silent_msgbox(*a, **kw):
+            # Automatycznie kliknij OK (return 1)
+            return 1
+        ctypes.windll.user32.MessageBoxW = _silent_msgbox
+    except Exception:
+        pass
+
     # Sprawdź czy PaintsReq.db istnieje
     if not os.path.exists(CITADEL_DB_PATH):
         import webview
@@ -538,6 +572,20 @@ def main():
     tray_thread.start()
 
     webview.start()
+
+    # Wyczyść foldery tymczasowe PyWebView po zamknięciu
+    try:
+        import tempfile
+        import shutil
+        import glob
+        temp_dir = tempfile.gettempdir()
+        for folder in glob.glob(os.path.join(temp_dir, '_MEI*')):
+            try:
+                shutil.rmtree(folder, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     main()

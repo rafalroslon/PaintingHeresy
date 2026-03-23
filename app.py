@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.4.0"
+APP_VERSION    = "1.4.1"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════

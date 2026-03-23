@@ -16,6 +16,7 @@
   --bg-panel:    #13131f;
   --bg-card:     #181826;
   --bg-hover:    #1e1e30;
+  --bg-light:    #3a3a5e;
   --border:      #2a2a42;
   --border-glow: #c9a84c44;
   --gold:        #c9a84c;
@@ -38,6 +39,51 @@
 
   --radius: 4px;
   --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── LIGHT MODE ─────────────────────────────── */
+body.light-mode {
+  --bg-void:     #f0ede6;
+  --bg-deep:     #e8e4dc;
+  --bg-panel:    #dedad0;
+  --bg-card:     #d4d0c6;
+  --bg-hover:    #ccc8be;
+  --bg-light:    #b8b4aa;
+  --border:      #bab6aa;
+  --border-glow: #c9a84c44;
+  --gold:        #8a6a1a;
+  --gold-bright: #a07820;
+  --gold-dim:    #c9a84c;
+  --crimson:     #c03030;
+  --crimson-bright: #e04040;
+  --text:        #1a1810;
+  --text-dim:    #5a5648;
+  --text-ghost:  #8a8678;
+}
+
+/* ── THEME TOGGLE BUTTON ────────────────────── */
+.theme-toggle {
+  position: fixed;
+  bottom: 46px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: border-color var(--transition), background var(--transition);
+  flex-shrink: 0;
+  z-index: 500;
+}
+
+.theme-toggle:hover {
+  border-color: var(--gold-dim);
+  background: var(--bg-hover);
 }
 
 /* ═══════════════════════════════════════════════
@@ -1510,7 +1556,202 @@ body::before {
   line-height: 1.5;
 }
 
+/* ═══════════════════════════════════════════════
+   UPDATE MODAL
+═══════════════════════════════════════════════ */
+#update-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #00000090;
+  backdrop-filter: blur(4px);
+  z-index: 3000;
+  align-items: center;
+  justify-content: center;
+}
+
+#update-modal.open { display: flex; }
+
+.update-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  width: 540px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 32px 80px #000000c0, 0 0 0 1px var(--border-glow);
+  animation: modalIn 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.update-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.update-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.update-icon { font-size: 28px; }
+
+.update-title-wrap { text-align: center; }
+
+.update-title {
+  font-family: 'Cinzel', serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.update-version {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  margin-top: 3px;
+  text-align: center;
+}
+
+.update-body { padding: 20px 24px; }
+
+.update-question {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.03em;
+  margin-bottom: 16px;
+}
+
+.update-changelog-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  margin-bottom: 10px;
+}
+
+.update-changelog {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.changelog-version {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.changelog-version-num {
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.changelog-version-date {
+  font-size: 11px;
+  color: var(--text-ghost);
+  letter-spacing: 0.08em;
+}
+
+.changelog-changes {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.changelog-changes li {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding-left: 14px;
+  position: relative;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.changelog-changes li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: var(--gold-dim);
+  font-size: 10px;
+  top: 2px;
+}
+
+.update-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.update-progress-wrap {
+  display: none;
+  padding: 0 24px 16px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.update-progress-wrap.visible { display: flex; }
+
+.update-progress-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.update-progress-bar-bg {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-deep);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-progress-bar-fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.update-progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 30px;
+  background: linear-gradient(90deg, transparent, var(--gold-bright));
+}
+
 /* Loading skeleton */
+.skeleton {
   background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -1733,6 +1974,68 @@ body::before {
     </div>
   </div>
 
+<!-- ═══════ UPDATE MODAL ═══════ -->
+<div id="update-modal">
+  <div class="update-box">
+    <div class="update-header">
+      <!-- Animowane oko Chaosu -->
+      <div style="width:64px;height:64px">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
+          <g class="logo-arrows" stroke="#c9a84c" stroke-linecap="round" opacity="0.65">
+            <line x1="20" y1="13" x2="20" y2="4"  stroke-width="1.4"/>
+            <polyline points="18,6 20,4 22,6"       stroke-width="1.2" fill="none"/>
+            <line x1="20" y1="27" x2="20" y2="36" stroke-width="1.4"/>
+            <polyline points="18,34 20,36 22,34"    stroke-width="1.2" fill="none"/>
+            <line x1="13" y1="20" x2="4"  y2="20" stroke-width="1.4"/>
+            <polyline points="6,18 4,20 6,22"       stroke-width="1.2" fill="none"/>
+            <line x1="27" y1="20" x2="36" y2="20" stroke-width="1.4"/>
+            <polyline points="34,18 36,20 34,22"    stroke-width="1.2" fill="none"/>
+            <line x1="15" y1="15" x2="8"  y2="8"  stroke-width="1.1"/>
+            <polyline points="9,8 8,8 8,9"         stroke-width="1.1" fill="none"/>
+            <line x1="25" y1="15" x2="33" y2="7"  stroke-width="1.3"/>
+            <polyline points="31,7 33,7 33,9"       stroke-width="1.1" fill="none"/>
+            <line x1="15" y1="25" x2="7"  y2="33" stroke-width="1.2"/>
+            <polyline points="7,31 7,33 9,33"       stroke-width="1.1" fill="none"/>
+            <line x1="25" y1="25" x2="34" y2="34" stroke-width="1.0"/>
+            <polyline points="32,34 34,34 34,32"    stroke-width="1.1" fill="none"/>
+          </g>
+          <circle class="logo-ring" cx="20" cy="20" r="10" fill="#13131f" stroke="#c9a84c" stroke-width="1.2"/>
+          <circle cx="20" cy="20" r="8.5" fill="none" stroke="#c9a84c" stroke-width="0.4" opacity="0.4"/>
+          <g class="logo-lid">
+            <path d="M9 20 Q13.5 14 20 14 Q26.5 14 31 20 Q26.5 26 20 26 Q13.5 26 9 20Z" fill="#13131f" stroke="#c9a84c" stroke-width="1.2"/>
+          </g>
+          <g class="logo-pupil">
+            <circle cx="20" cy="20" r="4.5" fill="none" stroke="#c9a84c" stroke-width="0.9"/>
+            <ellipse cx="20" cy="20" rx="1.5" ry="3.8" fill="#c9a84c"/>
+            <circle cx="21.2" cy="18.5" r="0.9" fill="#c9a84c" opacity="0.45"/>
+          </g>
+        </svg>
+      </div>
+      <div class="update-title-wrap">
+        <div class="update-title">New Update Available</div>
+        <div class="update-version" id="update-version-text"></div>
+      </div>
+    </div>
+    <div class="update-body">
+      <div class="update-question">A new version of Painting Heresy is ready. Would you like to download and install it now?</div>
+      <div class="update-changelog-title">What's new</div>
+      <div class="update-changelog" id="update-changelog"></div>
+    </div>
+    <div class="update-progress-wrap" id="update-progress-wrap">
+      <div class="update-progress-text" id="update-progress-text">Downloading...</div>
+      <div class="update-progress-bar-bg">
+        <div class="update-progress-bar-fill" id="update-progress-fill"></div>
+      </div>
+    </div>
+    <div class="update-footer">
+      <button class="btn btn-ghost btn-md" onclick="closeUpdateModal()">Later</button>
+      <button class="btn btn-primary btn-md" id="update-download-btn" onclick="startDownloadUpdate()">
+        ⚔ Download & Install
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════ NEW PAINTS MODAL ═══════ -->
 <div id="new-paints-modal" onclick="handleNpmBackdrop(event)">
   <div class="npm-box">
@@ -1759,6 +2062,7 @@ body::before {
         <span class="ticker-loading">Loading Warhammer Community news...</span>
       </div>
     </div>
+    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn" title="Toggle light/dark mode">🌙</button>
   </div>
 
 </div>
@@ -2322,7 +2626,168 @@ function openPdf(cardEl, filename) {
 }
 
 // ═══════════════════════════════════════════════
-//  NEW PAINTS CHECK
+//  THEME TOGGLE
+// ═══════════════════════════════════════════════
+function toggleTheme() {
+  const body = document.body;
+  const btn  = document.getElementById('theme-btn');
+  const isLight = body.classList.toggle('light-mode');
+  btn.textContent = isLight ? '🌑' : '🌙';
+  localStorage.setItem('ph-theme', isLight ? 'light' : 'dark');
+}
+
+// Przywróć motyw przy starcie
+(function() {
+  if (localStorage.getItem('ph-theme') === 'light') {
+    document.body.classList.add('light-mode');
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('theme-btn');
+      if (btn) btn.textContent = '🌑';
+    });
+  }
+})();
+
+// ═══════════════════════════════════════════════
+//  UPDATE CHECK
+// ═══════════════════════════════════════════════
+let updateDownloadUrl = null;
+
+async function checkForUpdates() {
+  try {
+    const res  = await fetch('/api/check-update');
+    const data = await res.json();
+
+    if (!data.has_update) return;
+
+    updateDownloadUrl    = data.download_url;
+    _updateLatestVersion = data.latest_version;
+
+    // Wypełnij wersję
+    document.getElementById('update-version-text').textContent =
+      `v${data.current_version} → v${data.latest_version}`;
+
+    // Wypełnij changelog
+    const changelog = document.getElementById('update-changelog');
+    if (data.changelog && data.changelog.length) {
+      changelog.innerHTML = data.changelog.map(entry => `
+        <div class="changelog-version">
+          <span class="changelog-version-num">v${escHtml(entry.version)}</span>
+          <span class="changelog-version-date">${escHtml(entry.date || '')}</span>
+        </div>
+        <ul class="changelog-changes">
+          ${(entry.changes || []).map(c => `<li>${escHtml(c)}</li>`).join('')}
+        </ul>
+      `).join('');
+    } else {
+      changelog.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No changelog available.</p>';
+    }
+
+    // Poczekaj aż splash zniknie, potem pokaż modal
+    window._pendingUpdateModal = true;
+  } catch (e) {
+    // Cicho ignoruj
+  }
+}
+
+function closeUpdateModal() {
+  document.getElementById('update-modal').classList.remove('open');
+}
+
+let _updateReady = false;
+let _updateLatestVersion = null;
+
+async function startDownloadUpdate() {
+  if (_updateReady) {
+    installUpdate();
+    return;
+  }
+
+  if (!updateDownloadUrl) return;
+
+  const btn      = document.getElementById('update-download-btn');
+  const laterBtn = document.querySelector('#update-modal .btn-ghost');
+  const progress = document.getElementById('update-progress-wrap');
+  const progText = document.getElementById('update-progress-text');
+  const progFill = document.getElementById('update-progress-fill');
+
+  btn.disabled      = true;
+  btn.textContent   = 'Downloading...';
+  laterBtn.disabled = true;
+  progress.classList.add('visible');
+  progFill.style.width = '5%';
+
+  try {
+    await fetch('/api/download-update', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        url:     updateDownloadUrl,
+        version: _updateLatestVersion || ''
+      })
+    });
+  } catch (e) {
+    progText.textContent  = 'Download failed. Please try again.';
+    btn.disabled          = false;
+    btn.textContent       = '⚔ Download & Install';
+    laterBtn.disabled     = false;
+    return;
+  }
+
+  let fakeProgress = 5;
+  const fakeInterval = setInterval(() => {
+    if (fakeProgress < 85) {
+      fakeProgress += Math.random() * 3;
+      progFill.style.width = fakeProgress + '%';
+      progText.textContent = `Downloading... ${Math.round(fakeProgress)}%`;
+    }
+  }, 400);
+
+  const pollInterval = setInterval(async () => {
+    try {
+      const res  = await fetch('/api/update-status');
+      const data = await res.json();
+
+      if (data.error) {
+        clearInterval(fakeInterval);
+        clearInterval(pollInterval);
+        progText.textContent  = 'Download failed: ' + data.error;
+        btn.disabled          = false;
+        btn.textContent       = '⚔ Download & Install';
+        laterBtn.disabled     = false;
+        return;
+      }
+
+      if (data.ready) {
+        clearInterval(fakeInterval);
+        clearInterval(pollInterval);
+        progFill.style.width  = '100%';
+        progText.textContent  = 'Download complete! Click to restart.';
+        _updateReady          = true;
+        btn.disabled          = false;
+        btn.textContent       = '⚔ Restart & Install';
+        laterBtn.disabled     = false;
+      }
+    } catch (e) { /* ignoruj */ }
+  }, 1000);
+}
+
+async function installUpdate() {
+  const btn      = document.getElementById('update-download-btn');
+  const progText = document.getElementById('update-progress-text');
+  btn.disabled          = true;
+  btn.textContent       = 'Installing...';
+  progText.textContent  = 'Installing update and restarting...';
+
+  // Używamy XMLHttpRequest zamiast fetch — PyWebView nie traktuje tego jako nawigacji
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/install-update', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.send('{}');
+  // Nie czekamy na odpowiedź — aplikacja się zamknie
+}
+
+// ═══════════════════════════════════════════════
+//  UPDATE CHECK
 // ═══════════════════════════════════════════════
 let newPaintsData = [];
 
@@ -2377,10 +2842,17 @@ function hideSplash() {
   splash.classList.add('hidden');
   setTimeout(() => {
     splash.remove();
-    // Upewnij się że newsy są załadowane po zniknięciu splasha
+    // Załaduj newsy jeśli brak
     const track = document.getElementById('ticker-track');
     if (!track || track.querySelector('.ticker-item') === null) {
       loadNews();
+    }
+    // Pokaż modal aktualizacji jeśli jest pending
+    if (window._pendingUpdateModal) {
+      window._pendingUpdateModal = false;
+      setTimeout(() => {
+        document.getElementById('update-modal').classList.add('open');
+      }, 400);
     }
   }, 700);
 }
@@ -2407,6 +2879,9 @@ async function initApp() {
   await splashStep('Loading statistics...', 42, loadStats);
   await splashStep('Fetching latest news...', 64, loadNews);
   await splashStep('Checking for new Citadel paints...', 86, checkNewPaints);
+
+  setSplashStatus('Checking for updates...', 95);
+  await Promise.all([checkForUpdates(), wait(500)]);
 
   setSplashStatus('Ready.', 100);
   await wait(600);

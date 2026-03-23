@@ -32,6 +32,7 @@ hiddenimports = [
     'sqlite3',
     'threading',
     'urllib.request',
+    'subprocess',
     'clr',
 ]
 

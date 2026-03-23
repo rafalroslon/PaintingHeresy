@@ -4,6 +4,7 @@ import threading
 import sqlite3
 import base64
 import io
+import subprocess
 
 from flask import Flask, jsonify, request, render_template, send_from_directory
 from PIL import Image
@@ -284,6 +285,89 @@ def _version_gt(v1, v2):
 def current_version():
     return jsonify({'version': APP_VERSION})
 
+@app.route('/api/download-update', methods=['POST'])
+def download_update():
+    """Pobiera nowy PaintingHeresy_app.exe w tle"""
+    data         = request.get_json()
+    download_url = data.get('url', '')
+    new_version  = data.get('version', '')
+
+    if not download_url:
+        return jsonify({'error': 'No download URL'}), 400
+
+    def do_download():
+        try:
+            temp_path = os.path.join(BASE_DIR, '_update_temp.exe')
+            r = _requests_lib.get(download_url, stream=True, timeout=120,
+                                  headers={'User-Agent': f'PaintingHeresy/{APP_VERSION}'})
+            total      = int(r.headers.get('content-length', 0))
+            downloaded = 0
+
+            with open(temp_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+            # Zapisz nową wersję
+            version_file = os.path.join(BASE_DIR, '_version.txt')
+            with open(version_file, 'w') as f:
+                f.write(new_version)
+
+            app._update_ready    = True
+            app._update_temp     = temp_path
+            app._update_version  = new_version
+
+        except Exception as e:
+            app._update_error = str(e)
+
+    app._update_ready = False
+    app._update_error = None
+    t = threading.Thread(target=do_download, daemon=True)
+    t.start()
+    return jsonify({'status': 'downloading'})
+
+@app.route('/api/update-status', methods=['GET'])
+def update_status():
+    """Sprawdź status pobierania"""
+    return jsonify({
+        'ready': getattr(app, '_update_ready', False),
+        'error': getattr(app, '_update_error', None),
+    })
+
+@app.route('/api/install-update', methods=['POST'])
+def install_update():
+    """Podmień plik i zrestartuj aplikację"""
+    temp_path = getattr(app, '_update_temp', None)
+    if not temp_path or not os.path.exists(temp_path):
+        return jsonify({'error': 'No update file'}), 400
+
+    app_exe  = os.path.join(BASE_DIR, 'PaintingHeresy.exe')
+    bat_path = os.path.join(BASE_DIR, '_update.bat')
+
+    bat_content = f"""@echo off
+timeout /t 2 /nobreak >nul
+move /y "{temp_path}" "{app_exe}"
+start "" "{app_exe}"
+del "%~f0"
+"""
+    with open(bat_path, 'w') as f:
+        f.write(bat_content)
+
+    subprocess.Popen(
+        ['cmd', '/c', bat_path],
+        creationflags=subprocess.CREATE_NO_WINDOW
+    )
+
+    # Zamknij aplikację po chwili
+    def shutdown():
+        import time as _t
+        _t.sleep(1)
+        os._exit(0)
+    threading.Thread(target=shutdown, daemon=True).start()
+
+    return jsonify({'status': 'installing'})
+
 @app.route('/api/news', methods=['GET'])
 def get_news():
     return jsonify(fetch_news())
@@ -361,18 +445,23 @@ def run_flask():
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
 def main():
-    # Sprawdź czy citadel.db istnieje
+    # Sprawdź czy PaintsReq.db istnieje
     if not os.path.exists(CITADEL_DB_PATH):
-        import tkinter.messagebox as mb
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        mb.showerror(
-            "Brak pliku",
-            f"Nie znaleziono citadel.db!\n\nUpewnij się że plik citadel.db\n"
-            f"jest w tym samym folderze co aplikacja:\n{BASE_DIR}"
+        # Pokaż błąd przez webview zamiast tkinter
+        import webview
+        webview.create_window(
+            'Painting Heresy — Error',
+            html=f'''<body style="background:#0e0e1a;color:#c9a84c;font-family:sans-serif;
+                     display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+                     <div style="text-align:center;padding:40px">
+                     <h2 style="color:#c9a84c">⚠ Missing file</h2>
+                     <p style="color:#a0a0b0">PaintsReq.db not found!<br>
+                     Make sure it is in the same folder as the application:<br>
+                     <code style="color:#7a7a96">{BASE_DIR}</code></p>
+                     </div></body>''',
+            width=500, height=250
         )
-        root.destroy()
+        webview.start()
         sys.exit(1)
 
     # Uruchom Flask w wątku w tle

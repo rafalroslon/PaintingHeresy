@@ -32,6 +32,8 @@ hiddenimports = [
     'sqlite3',
     'threading',
     'urllib.request',
+    'pystray',
+    'pystray._win32',
     'subprocess',
     'clr',
 ]

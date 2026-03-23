@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.0.0"
+APP_VERSION    = "1.2.0"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -444,10 +444,23 @@ def get_stats():
 def run_flask():
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
+def make_tray_icon():
+    """Generuje ikonę dla system tray — złote oko na ciemnym tle"""
+    from PIL import Image, ImageDraw
+    size = 64
+    img  = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    d    = ImageDraw.Draw(img)
+    # Tło
+    d.ellipse([2, 2, size-2, size-2], fill=(14, 14, 26, 255))
+    # Oko
+    d.ellipse([8, 8, size-8, size-8], outline=(201, 168, 76, 255), width=3)
+    # Źrenica
+    d.ellipse([24, 20, 40, 44], fill=(201, 168, 76, 255))
+    return img
+
 def main():
     # Sprawdź czy PaintsReq.db istnieje
     if not os.path.exists(CITADEL_DB_PATH):
-        # Pokaż błąd przez webview zamiast tkinter
         import webview
         webview.create_window(
             'Painting Heresy — Error',
@@ -468,13 +481,14 @@ def main():
     t = threading.Thread(target=run_flask, daemon=True)
     t.start()
 
-    # Poczekaj chwilę aż Flask się uruchomi
     import time
     time.sleep(0.8)
 
-    # Otwórz okno PyWebView
     import webview
-    webview.create_window(
+    import pystray
+
+    # Utwórz okno
+    window = webview.create_window(
         title     = 'Painting Heresy',
         url       = 'http://127.0.0.1:5000',
         width     = 1400,
@@ -482,6 +496,47 @@ def main():
         min_size  = (1000, 600),
         resizable = True,
     )
+
+    # ── Tray ikona ──────────────────────────────
+    tray_icon = [None]
+
+    def show_window(icon=None, item=None):
+        window.show()
+        window.restore()
+
+    def quit_app(icon=None, item=None):
+        if tray_icon[0]:
+            tray_icon[0].stop()
+        os._exit(0)
+
+    def on_closing():
+        """Zamiast zamykać — chowaj do tray"""
+        window.hide()
+        return False  # Blokuj domyślne zamknięcie
+
+    def setup_tray():
+        menu = pystray.Menu(
+            pystray.MenuItem('Show Painting Heresy', show_window, default=True),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem('Quit', quit_app),
+        )
+        icon_img = make_tray_icon()
+        icon = pystray.Icon(
+            'PaintingHeresy',
+            icon_img,
+            'Painting Heresy',
+            menu
+        )
+        tray_icon[0] = icon
+        icon.run()
+
+    # Podłącz obsługę zamykania
+    window.events.closing += on_closing
+
+    # Uruchom tray w osobnym wątku
+    tray_thread = threading.Thread(target=setup_tray, daemon=True)
+    tray_thread.start()
+
     webview.start()
 
 if __name__ == '__main__':

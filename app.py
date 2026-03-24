@@ -13,7 +13,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.6.1"
+APP_VERSION    = "1.6.2"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -888,7 +888,36 @@ def get_pdfs():
             })
     return jsonify(files)
 
-DATACARDS_DIR = os.path.join(BASE_DIR, 'datacards')
+SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
+
+def load_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def save_settings(data):
+    try:
+        current = load_settings()
+        current.update(data)
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(current, f)
+    except Exception:
+        pass
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    return jsonify(load_settings())
+
+@app.route('/api/settings', methods=['POST'])
+def post_settings():
+    save_settings(request.json)
+    return jsonify({'ok': True})
+
+
 
 @app.route('/api/datacard/<optype_id>', methods=['GET'])
 def get_datacard(optype_id):
@@ -1038,6 +1067,20 @@ def main():
 
     import webview
     import pystray
+
+    # Wyczyść cache WebView2 żeby wymusić załadowanie nowej wersji
+    try:
+        import shutil, tempfile
+        cache_dirs = [
+            os.path.join(tempfile.gettempdir(), 'pywebview'),
+            os.path.join(os.environ.get('LOCALAPPDATA', ''), 'pywebview'),
+            os.path.join(BASE_DIR, 'webview_cache'),
+        ]
+        for d in cache_dirs:
+            if os.path.exists(d):
+                shutil.rmtree(d, ignore_errors=True)
+    except Exception:
+        pass
 
     # Utwórz okno — frameless (bez systemowego paska tytułu)
     window = webview.create_window(

@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import threading
 import sqlite3
 import base64
@@ -12,7 +13,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.5.0"
+APP_VERSION    = "1.6.0"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -57,6 +58,11 @@ def get_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS paints
                  (id INTEGER PRIMARY KEY, name TEXT, category TEXT, image BLOB)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS wishlist
+                 (id INTEGER PRIMARY KEY, name TEXT UNIQUE, category TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS purchased
+                 (id INTEGER PRIMARY KEY, name TEXT UNIQUE, category TEXT,
+                  purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     return conn
 
@@ -280,6 +286,20 @@ def _version_gt(v1, v2):
         return a > b
     except Exception:
         return False
+
+@app.route('/api/local-ip', methods=['GET'])
+def get_local_ip():
+    """Zwraca lokalne IP komputera w sieci — potrzebne do QR kodu"""
+    import socket
+    try:
+        # Połącz z zewnętrznym adresem żeby znaleźć właściwy interfejs
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = '127.0.0.1'
+    return jsonify({'ip': ip, 'port': 5000})
 
 @app.route('/api/current-version', methods=['GET'])
 def current_version():
@@ -615,7 +635,230 @@ def kt_cache_status():
 
 
 
-# ── PDF LIBRARY ──────────────────────────────────────────────
+# ── SHOPPING LIST ─────────────────────────────────────────────
+
+@app.route('/api/shopping-purchased', methods=['POST'])
+def mark_purchased():
+    """Telefon wysyła listę kupionych farb"""
+    items = request.json  # [{name, category}, ...]
+    db = get_db()
+    for item in items:
+        try:
+            db.execute('INSERT OR REPLACE INTO purchased (name, category) VALUES (?, ?)',
+                       (item['name'], item['category']))
+        except Exception:
+            pass
+    db.commit()
+    return jsonify({'ok': True, 'count': len(items)})
+
+@app.route('/api/shopping-purchased', methods=['GET'])
+def get_purchased():
+    """Aplikacja sprawdza czy są nowe zakupy do zsynchronizowania"""
+    db = get_db()
+    items = db.execute('SELECT name, category FROM purchased').fetchall()
+    return jsonify([dict(r) for r in items])
+
+@app.route('/api/shopping-sync', methods=['POST'])
+def sync_purchases():
+    """
+    Zsynchronizuj zakupy:
+    - Usuń z wishlist
+    - Dodaj do collection (z obrazkiem z Citadel DB jeśli dostępny)
+    - Wyczyść purchased
+    """
+    db     = get_db()
+    citadel = get_citadel_db()
+    items  = db.execute('SELECT name, category FROM purchased').fetchall()
+
+    added = []
+    for item in items:
+        name     = item['name']
+        category = item['category']
+        # Pobierz obrazek z Citadel DB
+        row = citadel.execute(
+            'SELECT image FROM paints WHERE name = ?', (name,)
+        ).fetchone()
+        image = row['image'] if row else None
+        # Dodaj do collection (ignoruj duplikaty)
+        try:
+            db.execute('INSERT OR IGNORE INTO paints (name, category, image) VALUES (?, ?, ?)',
+                       (name, category, image))
+        except Exception:
+            pass
+        # Usuń z wishlist
+        db.execute('DELETE FROM wishlist WHERE name = ?', (name,))
+        added.append(name)
+
+    # Wyczyść purchased
+    db.execute('DELETE FROM purchased')
+    db.commit()
+    return jsonify({'ok': True, 'added': added, 'count': len(added)})
+
+
+@app.route('/api/wishlist', methods=['GET'])
+def get_wishlist():
+    db = get_db()
+    items = db.execute('SELECT name, category FROM wishlist ORDER BY category, name').fetchall()
+    return jsonify([dict(r) for r in items])
+
+@app.route('/api/wishlist', methods=['POST'])
+def add_to_wishlist():
+    data = request.json
+    db   = get_db()
+    try:
+        db.execute('INSERT OR IGNORE INTO wishlist (name, category) VALUES (?, ?)',
+                   (data['name'], data['category']))
+        db.commit()
+    except Exception:
+        pass
+    return jsonify({'ok': True})
+
+@app.route('/api/wishlist/<path:name>', methods=['DELETE'])
+def remove_from_wishlist(name):
+    db = get_db()
+    db.execute('DELETE FROM wishlist WHERE name = ?', (name,))
+    db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/shopping-list')
+def shopping_list_page():
+    """Mobilna strona z listą zakupów — otwierana przez QR kod"""
+    paints_param = request.args.get('paints', '')
+    paints = []
+    if paints_param:
+        import urllib.parse
+        for item in paints_param.split('|'):
+            parts = item.split(':')
+            if len(parts) == 2:
+                paints.append({'name': urllib.parse.unquote(parts[0]),
+                                'category': urllib.parse.unquote(parts[1])})
+    # Grupuj po kategorii
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for p in paints:
+        grouped[p['category']].append(p['name'])
+
+    html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Painting Heresy — Shopping List</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0 }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background:#0a090f; color:#d4c9a8; min-height:100vh; padding:20px 16px 40px }
+  h1 { font-size:20px; font-weight:700; letter-spacing:0.08em; color:#c9a84c;
+       margin-bottom:4px; text-transform:uppercase }
+  .subtitle { font-size:13px; color:#6a7a90; margin-bottom:24px; letter-spacing:0.05em }
+  .category { margin-bottom:20px }
+  .cat-title { font-size:11px; font-weight:700; letter-spacing:0.25em; text-transform:uppercase;
+               color:#6a5418; margin-bottom:8px; padding-bottom:4px;
+               border-bottom:1px solid #1a2235 }
+  .paint-item { display:flex; align-items:center; gap:12px; padding:12px 14px;
+                background:#0f0e16; border:1px solid #1a2235; border-radius:3px;
+                margin-bottom:6px; cursor:pointer; transition:background 0.15s }
+  .paint-item.checked { background:#0a1a0a; border-color:#1a4a1a }
+  .paint-item.checked .paint-name { text-decoration:line-through; color:#4a5a48 }
+  .checkbox { width:22px; height:22px; border:1.5px solid #2a3a4a; border-radius:3px;
+              flex-shrink:0; display:flex; align-items:center; justify-content:center;
+              font-size:14px; transition:all 0.15s }
+  .paint-item.checked .checkbox { background:#1a4a1a; border-color:#2a6a2a; color:#4aaa4a }
+  .paint-name { font-size:15px; font-weight:500; letter-spacing:0.03em }
+  .total { text-align:center; font-size:13px; color:#6a7a90; margin-top:24px; letter-spacing:0.1em }
+  .logo { display:flex; align-items:center; gap:10px; margin-bottom:20px }
+  .logo-text { font-size:13px; color:#6a5418; letter-spacing:0.15em; text-transform:uppercase }
+</style>
+</head>
+<body>
+<div class="logo">
+  <svg viewBox="0 0 24 24" fill="none" style="width:24px;height:24px">
+    <circle cx="12" cy="12" r="11" fill="#0a090f" stroke="#c9a84c" stroke-width="0.8"/>
+    <g stroke="#c9a84c" stroke-linecap="round" opacity="0.7" stroke-width="0.9">
+      <line x1="12" y1="5" x2="12" y2="2"/><polyline points="11,3 12,2 13,3" fill="none"/>
+      <line x1="12" y1="19" x2="12" y2="22"/><polyline points="11,21 12,22 13,21" fill="none"/>
+      <line x1="5" y1="12" x2="2" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+      <line x1="7" y1="7" x2="5" y2="5"/><line x1="17" y1="7" x2="19" y2="5"/>
+      <line x1="7" y1="17" x2="5" y2="19"/><line x1="17" y1="17" x2="19" y2="19"/>
+    </g>
+    <circle cx="12" cy="12" r="4.5" fill="#0a090f" stroke="#c9a84c" stroke-width="0.7"/>
+    <path d="M8 12 Q9.5 9.5 12 9.5 Q14.5 9.5 16 12 Q14.5 14.5 12 14.5 Q9.5 14.5 8 12Z"
+          fill="#0a090f" stroke="#c9a84c" stroke-width="0.7"/>
+    <ellipse cx="12" cy="12" rx="0.8" ry="2" fill="#c9a84c"/>
+  </svg>
+  <span class="logo-text">Painting Heresy</span>
+</div>
+<h1>Shopping List</h1>
+<p class="subtitle">''' + str(len(paints)) + ''' paint''' + ('' if len(paints)==1 else 's') + ''' · tap to check off</p>
+'''
+    for cat, names in sorted(grouped.items()):
+        html += f'<div class="category"><div class="cat-title">{cat}</div>'
+        for name in sorted(names):
+            html += f'''<div class="paint-item" onclick="toggle(this)">
+  <div class="checkbox"></div>
+  <span class="paint-name">{name}</span>
+</div>'''
+        html += '</div>'
+
+    html += f'''<p class="total" id="total">0 / {len(paints)} checked</p>
+
+<button id="done-btn" onclick="doneShopping()" style="
+  display:none;width:100%;padding:14px;margin-top:16px;
+  background:#1a4a1a;border:1px solid #2a7a2a;border-radius:4px;
+  color:#aaffaa;font-size:15px;font-weight:700;letter-spacing:0.08em;
+  cursor:pointer;text-transform:uppercase">
+  ✓ Done Shopping — Sync to App
+</button>
+
+<div id="sync-msg" style="display:none;text-align:center;padding:16px;
+  font-size:13px;color:#4aaa4a;letter-spacing:0.05em"></div>
+
+<script>
+  const total = {len(paints)};
+  const paintsData = {json.dumps(paints)};
+
+  function toggle(el) {{
+    el.classList.toggle('checked');
+    const cb = el.querySelector('.checkbox');
+    cb.textContent = el.classList.contains('checked') ? '✓' : '';
+    const done = document.querySelectorAll('.paint-item.checked').length;
+    document.getElementById('total').textContent = done + ' / ' + total + ' checked';
+    document.getElementById('done-btn').style.display = done > 0 ? 'block' : 'none';
+  }}
+
+  async function doneShopping() {{
+    const checked = [...document.querySelectorAll('.paint-item.checked')];
+    const names   = checked.map(el => el.querySelector('.paint-name').textContent.trim());
+    const items   = paintsData.filter(p => names.includes(p.name));
+
+    document.getElementById('done-btn').textContent = 'Sending...';
+    document.getElementById('done-btn').disabled = true;
+
+    try {{
+      const res  = await fetch('/api/shopping-purchased', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify(items)
+      }});
+      const data = await res.json();
+      document.getElementById('done-btn').style.display = 'none';
+      document.getElementById('sync-msg').style.display = 'block';
+      document.getElementById('sync-msg').textContent =
+        data.count + ' paint' + (data.count !== 1 ? 's' : '') +
+        ' saved! Open Painting Heresy on your PC to sync.';
+      // Grey out checked items
+      checked.forEach(el => el.style.opacity = '0.4');
+    }} catch(e) {{
+      document.getElementById('done-btn').textContent = '✓ Done Shopping — Sync to App';
+      document.getElementById('done-btn').disabled = false;
+      alert('Could not connect to app. Make sure you are on the same Wi-Fi.');
+    }}
+  }}
+</script>
+</body></html>'''
+    return html
+
+
 
 PDF_DIR = os.path.join(BASE_DIR, 'pdfs')
 
@@ -716,7 +959,7 @@ def get_stats():
 # ═══════════════════════════════════════════════
 
 def run_flask():
-    app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 def make_tray_icon():
     """Generuje ikonę dla system tray — złote oko na ciemnym tle"""

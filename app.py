@@ -7,13 +7,13 @@ import base64
 import io
 import subprocess
 
-from flask import Flask, jsonify, request, render_template, send_from_directory
+from flask import Flask, jsonify, request, render_template, send_from_directory, make_response
 from PIL import Image
 
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.6.0"
+APP_VERSION    = "1.6.1"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -83,11 +83,21 @@ def blob_to_base64(blob):
     except Exception:
         return None
 
+# ── Wyłącz cache dla wszystkich odpowiedzi ────
+@app.after_request
+def no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma']        = 'no-cache'
+    response.headers['Expires']       = '0'
+    return response
+
 # ── Routes ───────────────────────────────────────
 
 @app.route('/')
 def index():
-    return render_template('index.html', categories=CATEGORIES)
+    resp = make_response(render_template('index.html', categories=CATEGORIES, version=APP_VERSION))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 @app.route('/api/paints', methods=['GET'])
 def get_paints():
@@ -1032,7 +1042,7 @@ def main():
     # Utwórz okno — frameless (bez systemowego paska tytułu)
     window = webview.create_window(
         title     = 'Painting Heresy',
-        url       = 'http://127.0.0.1:5000',
+        url       = f'http://127.0.0.1:5000?v={APP_VERSION}',
         width     = 1400,
         height    = 900,
         min_size  = (1000, 600),

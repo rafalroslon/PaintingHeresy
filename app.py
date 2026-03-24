@@ -12,7 +12,7 @@ from PIL import Image
 # ═══════════════════════════════════════════════
 #  WERSJA APLIKACJI
 # ═══════════════════════════════════════════════
-APP_VERSION    = "1.4.1"
+APP_VERSION    = "1.5.0"
 UPDATE_URL     = "https://web-production-ca07e.up.railway.app/version"
 
 # ═══════════════════════════════════════════════
@@ -571,7 +571,35 @@ def kt_killteam(factionid, killteamid):
 
     return jsonify({'error': 'Could not fetch kill team data'}), 404
 
-@app.route('/api/kt/cache-status', methods=['GET'])
+@app.route('/api/window/quit', methods=['POST'])
+def window_quit():
+    """Całkowicie zamknij aplikację"""
+    threading.Thread(target=lambda: (time.sleep(0.2), os._exit(0)), daemon=True).start()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/window/minimize', methods=['POST'])
+def window_minimize():
+    try:
+        import webview
+        for w in webview.windows:
+            w.minimize()
+    except Exception:
+        pass
+    return jsonify({'ok': True})
+
+@app.route('/api/window/hide', methods=['POST'])
+def window_hide():
+    """Chowaj do tray (zamiast zamykać)"""
+    try:
+        import webview
+        for w in webview.windows:
+            w.hide()
+    except Exception:
+        pass
+    return jsonify({'ok': True})
+
+
 def kt_cache_status():
     """Informacja o stanie cache"""
     has_factions = os.path.exists(KT_FACTIONS_FILE)
@@ -606,6 +634,37 @@ def get_pdfs():
                 'size_kb':  round(size / 1024),
             })
     return jsonify(files)
+
+DATACARDS_DIR = os.path.join(BASE_DIR, 'datacards')
+
+@app.route('/api/datacard/<optype_id>', methods=['GET'])
+def get_datacard(optype_id):
+    """Sprawdź czy istnieje obraz data cardu dla operatora"""
+    if not re.match(r'^[A-Za-z0-9_\-]+$', optype_id):
+        return jsonify({'exists': False})
+    path = os.path.join(DATACARDS_DIR, f'{optype_id}.jpg')
+    return jsonify({'exists': os.path.exists(path)})
+
+@app.route('/datacards/<optype_id>.jpg', methods=['GET'])
+def serve_datacard(optype_id):
+    if not re.match(r'^[A-Za-z0-9_\-]+$', optype_id):
+        return 'Not found', 404
+    if not os.path.exists(DATACARDS_DIR):
+        return 'Not found', 404
+    return send_from_directory(DATACARDS_DIR, f'{optype_id}.jpg')
+
+
+def upload_pdf():
+    if not os.path.exists(PDF_DIR):
+        os.makedirs(PDF_DIR)
+    files = request.files.getlist('files')
+    saved = []
+    for f in files:
+        if f.filename.lower().endswith('.pdf'):
+            safe = os.path.basename(f.filename)
+            f.save(os.path.join(PDF_DIR, safe))
+            saved.append(safe)
+    return jsonify({'ok': True, 'saved': saved})
 
 @app.route('/pdfs/<path:filename>', methods=['GET'])
 def serve_pdf(filename):
@@ -727,7 +786,7 @@ def main():
     import webview
     import pystray
 
-    # Utwórz okno
+    # Utwórz okno — frameless (bez systemowego paska tytułu)
     window = webview.create_window(
         title     = 'Painting Heresy',
         url       = 'http://127.0.0.1:5000',
@@ -735,6 +794,7 @@ def main():
         height    = 900,
         min_size  = (1000, 600),
         resizable = True,
+        frameless = True,
     )
 
     # ── Tray ikona ──────────────────────────────
